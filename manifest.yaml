@@ -1,0 +1,19 @@
+name: sftp
+description: sftp backend
+version: 0.1.0-beta.1
+connectors:
+- type: importer
+  executable: sftpImporter
+  homepage: https://github.com/PlakarKorp/integration-sftp
+  license: ISC
+  protocols: [sftp]
+- type: exporter
+  executable: sftpExporter
+  homepage: https://github.com/PlakarKorp/integration-sftp
+  license: ISC
+  protocols: [sftp]
+- type: storage
+  executable: sftpStorage
+  homepage: https://github.com/PlakarKorp/integration-sftp
+  license: ISC
+  protocols: [sftp]
