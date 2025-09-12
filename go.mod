@@ -3,8 +3,8 @@ module github.com/PlakarKorp/integration-sftp
 go 1.24.0
 
 require (
-	github.com/PlakarKorp/go-kloset-sdk v1.0.1
-	github.com/PlakarKorp/kloset v1.0.5
+	github.com/PlakarKorp/go-kloset-sdk v1.0.2
+	github.com/PlakarKorp/kloset v1.0.7
 	github.com/kevinburke/ssh_config v1.2.0
 	github.com/pkg/sftp v1.13.9
 	github.com/pkg/xattr v0.4.12
@@ -16,7 +16,7 @@ require (
 require (
 	github.com/DataDog/zstd v1.5.7 // indirect
 	github.com/PlakarKorp/go-cdc-chunkers v1.0.2 // indirect
-	github.com/PlakarKorp/integration-grpc v1.0.14 // indirect
+	github.com/PlakarKorp/integration-grpc v1.0.15 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cockroachdb/crlib v0.0.0-20250718215705-7ff5051265b9 // indirect
