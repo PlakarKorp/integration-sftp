@@ -135,7 +135,7 @@ func (p *SFTPImporter) walkDir_walker(numWorkers int) (<-chan *importer.ScanResu
 }
 
 func SFTPWalk(client *sftp.Client, remotePath string, walkFn func(path string, info os.FileInfo, err error) error) error {
-	info, err := client.Stat(remotePath)
+	info, err := client.Lstat(remotePath)
 	if err != nil {
 		// If we can't stat the file, call walkFn with the error.
 		return walkFn(remotePath, nil, err)
@@ -144,6 +144,7 @@ func SFTPWalk(client *sftp.Client, remotePath string, walkFn func(path string, i
 	if err := walkFn(remotePath, info, nil); err != nil {
 		return err
 	}
+
 	// If it's not a directory, nothing more to do.
 	if !info.IsDir() {
 		return nil
