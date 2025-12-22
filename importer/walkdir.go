@@ -28,33 +28,33 @@ import (
 	"github.com/pkg/sftp"
 )
 
+type file struct {
+	path string
+	info os.FileInfo
+}
+
 // Worker pool to handle file scanning in parallel
-func (p *SFTPImporter) walkDir_worker(jobs <-chan string, results chan<- *importer.ScanResult, wg *sync.WaitGroup) {
+func (p *SFTPImporter) walkDir_worker(jobs <-chan file, results chan<- *importer.ScanResult, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	for path := range jobs {
-		info, err := p.client.Lstat(path)
-		if err != nil {
-			results <- importer.NewScanError(path, err)
-			continue
-		}
-
-		fileinfo := objects.FileInfoFromStat(info)
+	for file := range jobs {
+		fileinfo := objects.FileInfoFromStat(file.info)
 
 		var originFile string
+		var err error
 		if fileinfo.Mode()&os.ModeSymlink != 0 {
-			originFile, err = p.client.ReadLink(path)
+			originFile, err = p.client.ReadLink(file.path)
 			if err != nil {
-				results <- importer.NewScanError(path, err)
+				results <- importer.NewScanError(file.path, err)
 				continue
 			}
 		}
-		results <- importer.NewScanRecord(path, originFile, fileinfo, []string{},
-			func() (io.ReadCloser, error) { return p.client.Open(path) })
+		results <- importer.NewScanRecord(file.path, originFile, fileinfo, []string{},
+			func() (io.ReadCloser, error) { return p.client.Open(file.path) })
 	}
 }
 
-func (p *SFTPImporter) walkDir_addPrefixDirectories(jobs chan<- string, results chan<- *importer.ScanResult) {
+func (p *SFTPImporter) walkDir_addPrefixDirectories(jobs chan<- file, results chan<- *importer.ScanResult) {
 	// Clean the directory and split the path into components
 	directory := path.Clean(p.rootDir)
 	atoms := strings.Split(directory, string(os.PathSeparator))
@@ -66,19 +66,25 @@ func (p *SFTPImporter) walkDir_addPrefixDirectories(jobs chan<- string, results 
 			path = "/" + path
 		}
 
-		if _, err := p.client.Stat(path); err != nil {
+		info, err := p.client.Stat(path)
+		if err != nil {
 			results <- importer.NewScanError(path, err)
 			continue
 		}
 
-		jobs <- path
+		jobs <- file{path: path, info: info}
 	}
 }
 
 func (p *SFTPImporter) walkDir_walker(numWorkers int) (<-chan *importer.ScanResult, error) {
 	results := make(chan *importer.ScanResult, 1000) // Larger buffer for results
-	jobs := make(chan string, 1000)                  // Buffered channel to feed paths to workers
+	jobs := make(chan file, 1000)                    // Buffered channel to feed paths to workers
 	var wg sync.WaitGroup
+
+	rootInfo, err := p.client.Lstat(p.rootDir)
+	if err != nil {
+		return nil, err
+	}
 
 	// Launch worker pool
 	for w := 1; w <= numWorkers; w++ {
@@ -90,12 +96,7 @@ func (p *SFTPImporter) walkDir_walker(numWorkers int) (<-chan *importer.ScanResu
 	go func() {
 		defer close(jobs)
 
-		info, err := p.client.Lstat(p.rootDir)
-		if err != nil {
-			results <- importer.NewScanError(p.rootDir, err)
-			return
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
+		if rootInfo.Mode()&os.ModeSymlink != 0 {
 			originFile, err := p.client.ReadLink(p.rootDir)
 			if err != nil {
 				results <- importer.NewScanError(p.rootDir, err)
@@ -105,7 +106,10 @@ func (p *SFTPImporter) walkDir_walker(numWorkers int) (<-chan *importer.ScanResu
 			if !path.IsAbs(originFile) {
 				originFile = path.Join(path.Dir(p.rootDir), originFile)
 			}
-			jobs <- p.rootDir
+
+			results <- importer.NewScanRecord(p.rootDir, originFile,
+				objects.FileInfoFromStat(rootInfo), nil, nil)
+
 			p.rootDir = originFile
 		}
 
@@ -117,7 +121,7 @@ func (p *SFTPImporter) walkDir_walker(numWorkers int) (<-chan *importer.ScanResu
 				results <- importer.NewScanError(path, err)
 				return nil
 			}
-			jobs <- path
+			jobs <- file{path: path, info: info}
 			return nil
 		})
 		if err != nil {
