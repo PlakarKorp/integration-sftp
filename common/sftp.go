@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -29,6 +30,40 @@ var masterMu sync.Map // map[string]*sync.Mutex
 func lockFor(sock string) *sync.Mutex {
 	m, _ := masterMu.LoadOrStore(sock, &sync.Mutex{})
 	return m.(*sync.Mutex)
+}
+
+func setupPrivateKey(params map[string]string) error {
+	key := params["ssh_private_key"]
+	if key == "" {
+		return nil
+	}
+
+	ttl := params["ssh_private_key_ttl"]
+	if ttl == "" {
+		ttl = "5s"
+	}
+
+	cmd := exec.Command("ssh-add", "-t", ttl, "-")
+	if sshAuthSock := params["ssh_auth_sock"]; sshAuthSock != "" {
+		cmd.Env = append(cmd.Environ(), "SSH_AUTH_SOCK="+sshAuthSock)
+	}
+
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		defer stdin.Close()
+		io.WriteString(stdin, key+"\n")
+	}()
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("failed to add key: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+
+	return nil
 }
 
 func ensureMaster(endpoint *url.URL, params map[string]string) (string, error) {
@@ -107,7 +142,12 @@ func ensureMaster(endpoint *url.URL, params map[string]string) (string, error) {
 			host,
 		)
 
-		out, err := exec.Command("ssh", startArgs...).CombinedOutput()
+		cmd := exec.Command("ssh", startArgs...)
+		if sshAuthSock := params["ssh_auth_sock"]; sshAuthSock != "" {
+			cmd.Env = append(cmd.Environ(), "SSH_AUTH_SOCK="+sshAuthSock)
+		}
+
+		out, err := cmd.CombinedOutput()
 		if err != nil {
 			return "", fmt.Errorf("failed to start ssh master: %w: %s", err, strings.TrimSpace(string(out)))
 		}
@@ -139,6 +179,11 @@ func Connect(endpoint *url.URL, params map[string]string) (*sftp.Client, error) 
 	host := endpoint.Hostname()
 	if host == "" {
 		return nil, fmt.Errorf("missing hostname in endpoint: %q", endpoint.String())
+	}
+
+	// add the private key to the agent if necessary
+	if err := setupPrivateKey(params); err != nil {
+		return nil, fmt.Errorf("failed to set private key: %w", err)
 	}
 
 	// ensure the master exists (idempotent) and get the control socket path.
