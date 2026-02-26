@@ -107,7 +107,7 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 	var wg sync.WaitGroup
 	for range numWorkers {
 		wg.Add(1)
-		go imp.walkDir_worker(ctx, jobs, records, &wg)
+		go imp.walkDir_worker(jobs, records, &wg)
 	}
 
 	// Add prefix directories first

@@ -17,7 +17,6 @@
 package importer
 
 import (
-	"context"
 	"io"
 	"os"
 	"path"
@@ -35,7 +34,7 @@ type file struct {
 }
 
 // Worker pool to handle file scanning in parallel
-func (imp *Importer) walkDir_worker(ctx context.Context, jobs <-chan file, records chan<- *connectors.Record, wg *sync.WaitGroup) {
+func (imp *Importer) walkDir_worker(jobs <-chan file, records chan<- *connectors.Record, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for p := range jobs {
