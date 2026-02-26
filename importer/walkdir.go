@@ -38,19 +38,7 @@ type file struct {
 func (imp *Importer) walkDir_worker(ctx context.Context, jobs <-chan file, records chan<- *connectors.Record, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	for {
-		var (
-			p  file
-			ok bool
-		)
-
-		select {
-		case p, ok = <-jobs:
-			if !ok {
-				return
-			}
-		}
-
+	for p := range jobs {
 		// fixup the rootdir if it happened to be a file
 		if !p.info.IsDir() && p.path == imp.Root() {
 			imp.rootDir = filepath.Dir(imp.Root())
