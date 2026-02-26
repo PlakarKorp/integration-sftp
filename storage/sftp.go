@@ -92,7 +92,7 @@ func (s *Store) List(ctx context.Context, res storage.StorageResource) ([]object
 	case storage.StorageResourceState:
 		return s.states.List()
 	case storage.StorageResourceLock:
-		return s.getLocks(ctx)
+		return s.getLocks()
 	default:
 		return nil, errors.ErrUnsupported
 	}
@@ -111,7 +111,7 @@ func (s *Store) Get(ctx context.Context, res storage.StorageResource, mac object
 		if rg != nil {
 			return nil, errors.ErrUnsupported
 		}
-		return s.getLock(ctx, mac)
+		return s.getLock(mac)
 	default:
 		return nil, errors.ErrUnsupported
 	}
@@ -244,8 +244,7 @@ func (s *Store) Close(ctx context.Context) error {
 	return nil
 }
 
-/* Locks */
-func (s *Store) getLocks(ctx context.Context) (ret []objects.MAC, err error) {
+func (s *Store) getLocks() (ret []objects.MAC, err error) {
 	entries, err := s.client.ReadDir(s.Path("locks"))
 	if err != nil {
 		return
@@ -265,7 +264,7 @@ func (s *Store) getLocks(ctx context.Context) (ret []objects.MAC, err error) {
 	return
 }
 
-func (s *Store) getLock(ctx context.Context, lockID objects.MAC) (io.ReadCloser, error) {
+func (s *Store) getLock(lockID objects.MAC) (io.ReadCloser, error) {
 	fp, err := s.client.Open(path.Join(s.Path("locks"), hex.EncodeToString(lockID[:])))
 	if err != nil {
 		return nil, err

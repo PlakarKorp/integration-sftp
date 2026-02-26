@@ -17,7 +17,6 @@
 package importer
 
 import (
-	"context"
 	"io"
 	"os"
 	"path"
@@ -35,29 +34,11 @@ type file struct {
 }
 
 // Worker pool to handle file scanning in parallel
-func (imp *Importer) walkDir_worker(ctx context.Context, jobs <-chan file, records chan<- *connectors.Record, wg *sync.WaitGroup) {
+func (imp *Importer) walkDir_worker(jobs <-chan file, records chan<- *connectors.Record, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	for {
-		var (
-			p  file
-			ok bool
-		)
-
-		select {
-		case p, ok = <-jobs:
-			if !ok {
-				return
-			}
-		}
-
-		// fixup the rootdir if it happened to be a file
-		if !p.info.IsDir() && p.path == imp.Root() {
-			imp.rootDir = filepath.Dir(imp.Root())
-		}
-
+	for p := range jobs {
 		fileinfo := objects.FileInfoFromStat(p.info)
-		//fileinfo.Lusername, fileinfo.Lgroupname = imp.lookupIDs(fileinfo.Uid(), fileinfo.Gid())
 
 		var originFile string
 		var err error
@@ -69,9 +50,7 @@ func (imp *Importer) walkDir_worker(ctx context.Context, jobs <-chan file, recor
 			}
 		}
 
-		entrypath := p.path
-
-		records <- connectors.NewRecord(entrypath, originFile, fileinfo, []string{},
+		records <- connectors.NewRecord(p.path, originFile, fileinfo, nil,
 			func() (io.ReadCloser, error) {
 				return imp.client.Open(p.path)
 			})
