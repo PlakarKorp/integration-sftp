@@ -38,13 +38,7 @@ func (imp *Importer) walkDir_worker(jobs <-chan file, records chan<- *connectors
 	defer wg.Done()
 
 	for p := range jobs {
-		// fixup the rootdir if it happened to be a file
-		if !p.info.IsDir() && p.path == imp.Root() {
-			imp.rootDir = filepath.Dir(imp.Root())
-		}
-
 		fileinfo := objects.FileInfoFromStat(p.info)
-		//fileinfo.Lusername, fileinfo.Lgroupname = imp.lookupIDs(fileinfo.Uid(), fileinfo.Gid())
 
 		var originFile string
 		var err error
