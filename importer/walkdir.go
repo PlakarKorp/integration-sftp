@@ -50,9 +50,7 @@ func (imp *Importer) walkDir_worker(jobs <-chan file, records chan<- *connectors
 			}
 		}
 
-		entrypath := p.path
-
-		records <- connectors.NewRecord(entrypath, originFile, fileinfo, []string{},
+		records <- connectors.NewRecord(p.path, originFile, fileinfo, nil,
 			func() (io.ReadCloser, error) {
 				return imp.client.Open(p.path)
 			})
