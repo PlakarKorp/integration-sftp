@@ -45,8 +45,7 @@ func NewBuckets(sftpClient *sftp.Client, path string) Buckets {
 func (buckets *Buckets) Create() error {
 	var g errgroup.Group
 
-	for i := 0; i < 256; i++ {
-		i := i // capture the current value of i
+	for i := range 256 {
 		g.Go(func() error {
 			dir := path.Join(buckets.path, fmt.Sprintf("%02x", i))
 			if err := buckets.client.MkdirAll(dir); err != nil {
@@ -67,7 +66,7 @@ func (buckets *Buckets) List() ([]objects.MAC, error) {
 	var mu sync.Mutex
 
 	wg := sync.WaitGroup{}
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		path := path.Join(buckets.path, fmt.Sprintf("%02x", i))
 		wg.Add(1)
 		go func(path string) {

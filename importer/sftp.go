@@ -92,21 +92,10 @@ func NewImporter(appCtx context.Context, opts *connectors.Options, name string, 
 	return imp, nil
 }
 
-func (imp *Importer) Type() string {
-	return "sftp"
-}
-
-func (imp *Importer) Origin() string {
-	return imp.endpoint.Host
-}
-
-func (imp *Importer) Root() string {
-	return imp.rootDir
-}
-
-func (imp *Importer) Flags() location.Flags {
-	return 0
-}
+func (imp *Importer) Type() string          { return "sftp" }
+func (imp *Importer) Origin() string        { return imp.endpoint.Host }
+func (imp *Importer) Root() string          { return imp.rootDir }
+func (imp *Importer) Flags() location.Flags { return 0 }
 
 func (imp *Importer) Import(ctx context.Context, records chan<- *connectors.Record, results <-chan *connectors.Result) error {
 	defer close(records)
@@ -118,7 +107,7 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 	var wg sync.WaitGroup
 	for range numWorkers {
 		wg.Add(1)
-		go imp.walkDir_worker(ctx, jobs, records, &wg)
+		go imp.walkDir_worker(jobs, records, &wg)
 	}
 
 	// Add prefix directories first
