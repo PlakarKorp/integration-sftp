@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"path/filepath"
+	"path"
 	"strconv"
 	"sync"
 
@@ -122,7 +122,7 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 	}
 
 	// Add prefix directories first
-	imp.walkDir_addPrefixDirectories(filepath.Dir(imp.realpath), records)
+	imp.walkDir_addPrefixDirectories(path.Dir(imp.realpath), records)
 	if imp.realpath != imp.Root() {
 		imp.walkDir_addPrefixDirectories(imp.Root(), records)
 	}
@@ -159,8 +159,8 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 	return err
 }
 
-func (imp *Importer) realpathFollow(path string) (resolved string, dev uint64, err error) {
-	info, err := imp.client.Lstat(path)
+func (imp *Importer) realpathFollow(target string) (resolved string, dev uint64, err error) {
+	info, err := imp.client.Lstat(target)
 	if err != nil {
 		return
 	}
@@ -170,18 +170,18 @@ func (imp *Importer) realpathFollow(path string) (resolved string, dev uint64, e
 	}
 
 	if info.Mode()&os.ModeSymlink != 0 {
-		realpath, err := os.Readlink(path)
+		realpath, err := os.Readlink(target)
 		if err != nil {
 			return "", 0, err
 		}
 
-		if !filepath.IsAbs(realpath) {
-			realpath = filepath.Join(filepath.Dir(path), realpath)
+		if !path.IsAbs(realpath) {
+			realpath = path.Join(path.Dir(target), realpath)
 		}
-		path = realpath
+		target = realpath
 	}
 
-	return path, dev, nil
+	return target, dev, nil
 }
 
 func (p *Importer) Ping(ctx context.Context) error {

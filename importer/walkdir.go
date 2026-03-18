@@ -21,7 +21,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"sync"
 
 	"github.com/PlakarKorp/kloset/connectors"
@@ -46,7 +45,7 @@ func (imp *Importer) walkDir_worker(jobs <-chan file, records chan<- *connectors
 	for p := range jobs {
 		// fixup the rootdir if it happened to be a file
 		if !p.info.IsDir() && p.path == imp.Root() {
-			imp.rootDir = filepath.Dir(imp.Root())
+			imp.rootDir = path.Dir(imp.Root())
 		}
 
 		fileinfo := objects.FileInfoFromStat(p.info)
@@ -79,7 +78,7 @@ func (imp *Importer) walkDir_addPrefixDirectories(root string, records chan<- *c
 		if err != nil {
 			records <- connectors.NewError(root, err)
 			finfo = objects.FileInfo{
-				Lname: filepath.Base(root),
+				Lname: path.Base(root),
 				Lmode: os.ModeDir | 0755,
 			}
 		} else {
@@ -88,7 +87,7 @@ func (imp *Importer) walkDir_addPrefixDirectories(root string, records chan<- *c
 
 		records <- connectors.NewRecord(root, "", finfo, nil, nil)
 
-		newroot := filepath.Dir(root)
+		newroot := path.Dir(root)
 		if newroot == root { // base case for "/" or "C:\"
 			break
 		}

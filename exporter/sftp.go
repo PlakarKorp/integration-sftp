@@ -23,7 +23,7 @@ import (
 	"math/rand/v2"
 	"net/url"
 	"os"
-	"path/filepath"
+	"path"
 	"sync"
 
 	plakarsftp "github.com/PlakarKorp/integration-sftp/common"
@@ -121,7 +121,7 @@ loop:
 				continue
 			}
 
-			pathname := filepath.Join(p.Root(), record.Pathname)
+			pathname := path.Join(p.Root(), record.Pathname)
 			if record.FileInfo.Lmode.IsDir() {
 				if err := p.client.Mkdir(pathname); err != nil {
 					results <- record.Error(err)
@@ -188,7 +188,7 @@ func (p *Exporter) hardlink(record *connectors.Record, pathname string) error {
 		if err := p.writeAtomic(record, pathname); err != nil {
 			return "", err
 		}
-		p.hlCanon.Store(key, filepath.Join(p.Root(), pathname))
+		p.hlCanon.Store(key, path.Join(p.Root(), pathname))
 		return pathname, nil
 	})
 	if err != nil {
