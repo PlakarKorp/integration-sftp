@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"sync"
@@ -43,11 +44,12 @@ type Importer struct {
 	client   *sftp.Client
 	endpoint *url.URL
 
-	rootDir   string
-	realpath  string
-	excludes  *exclude.RuleSet
-	nocrossfs bool
-	devno     uint64
+	rootDir    string
+	rootIsFile bool
+	realpath   string
+	excludes   *exclude.RuleSet
+	nocrossfs  bool
+	devno      uint64
 }
 
 func NewImporter(appCtx context.Context, opts *connectors.Options, name string, config map[string]string) (importer.Importer, error) {
@@ -82,20 +84,28 @@ func NewImporter(appCtx context.Context, opts *connectors.Options, name string, 
 		excludes:  excludes,
 	}
 
-	realpath, devno, err := imp.realpathFollow(parsed.Path)
+	realpath, rootIsFile, devno, err := imp.realpathFollow(parsed.Path)
 	if err != nil {
 		return nil, err
 	}
 	imp.realpath = realpath
 	imp.devno = devno
+	imp.rootIsFile = rootIsFile
 
 	return imp, nil
 }
 
 func (imp *Importer) Type() string          { return "sftp" }
 func (imp *Importer) Origin() string        { return imp.endpoint.Host }
-func (imp *Importer) Root() string          { return imp.rootDir }
 func (imp *Importer) Flags() location.Flags { return 0 }
+
+func (imp *Importer) Root() string {
+	root := imp.rootDir
+	if imp.rootIsFile {
+		root = path.Dir(root)
+	}
+	return root
+}
 
 func (imp *Importer) Import(ctx context.Context, records chan<- *connectors.Record, results <-chan *connectors.Result) error {
 	defer close(records)
@@ -148,7 +158,7 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 	return err
 }
 
-func (imp *Importer) realpathFollow(path string) (resolved string, dev uint64, err error) {
+func (imp *Importer) realpathFollow(path string) (resolved string, rootIsFile bool, dev uint64, err error) {
 	info, err := imp.client.Lstat(path)
 	if err != nil {
 		return
@@ -156,12 +166,14 @@ func (imp *Importer) realpathFollow(path string) (resolved string, dev uint64, e
 
 	if info.Mode()&os.ModeDir != 0 {
 		dev = dirDevice(info)
+	} else {
+		rootIsFile = true
 	}
 
 	if info.Mode()&os.ModeSymlink != 0 {
 		realpath, err := os.Readlink(path)
 		if err != nil {
-			return "", 0, err
+			return "", false, 0, err
 		}
 
 		if !filepath.IsAbs(realpath) {
@@ -170,7 +182,7 @@ func (imp *Importer) realpathFollow(path string) (resolved string, dev uint64, e
 		path = realpath
 	}
 
-	return path, dev, nil
+	return path, rootIsFile, dev, nil
 }
 
 func (p *Importer) Ping(ctx context.Context) error {
