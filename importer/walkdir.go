@@ -17,11 +17,10 @@
 package importer
 
 import (
-	"context"
+	"errors"
 	"io"
 	"os"
 	"path"
-	"path/filepath"
 	"sync"
 
 	"github.com/PlakarKorp/kloset/connectors"
@@ -34,26 +33,19 @@ type file struct {
 	info os.FileInfo
 }
 
+var (
+	SkipDir = errors.New("skip this directory")
+	SkipAll = errors.New("skip everything and stop the walk")
+)
+
 // Worker pool to handle file scanning in parallel
-func (imp *Importer) walkDir_worker(ctx context.Context, jobs <-chan file, records chan<- *connectors.Record, wg *sync.WaitGroup) {
+func (imp *Importer) walkDir_worker(jobs <-chan file, records chan<- *connectors.Record, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	for {
-		var (
-			p  file
-			ok bool
-		)
-
-		select {
-		case p, ok = <-jobs:
-			if !ok {
-				return
-			}
-		}
-
+	for p := range jobs {
 		// fixup the rootdir if it happened to be a file
 		if !p.info.IsDir() && p.path == imp.Root() {
-			imp.rootDir = filepath.Dir(imp.Root())
+			imp.rootDir = path.Dir(imp.Root())
 		}
 
 		fileinfo := objects.FileInfoFromStat(p.info)
@@ -86,7 +78,7 @@ func (imp *Importer) walkDir_addPrefixDirectories(root string, records chan<- *c
 		if err != nil {
 			records <- connectors.NewError(root, err)
 			finfo = objects.FileInfo{
-				Lname: filepath.Base(root),
+				Lname: path.Base(root),
 				Lmode: os.ModeDir | 0755,
 			}
 		} else {
@@ -95,7 +87,7 @@ func (imp *Importer) walkDir_addPrefixDirectories(root string, records chan<- *c
 
 		records <- connectors.NewRecord(root, "", finfo, nil, nil)
 
-		newroot := filepath.Dir(root)
+		newroot := path.Dir(root)
 		if newroot == root { // base case for "/" or "C:\"
 			break
 		}
@@ -103,32 +95,43 @@ func (imp *Importer) walkDir_addPrefixDirectories(root string, records chan<- *c
 	}
 }
 
-func SFTPWalk(client *sftp.Client, remotePath string, walkFn func(path string, info os.FileInfo, err error) error) error {
-	info, err := client.Lstat(remotePath)
-	if err != nil {
-		// If we can't stat the file, call walkFn with the error.
-		return walkFn(remotePath, nil, err)
-	}
-	// Call the walk function for the current file/directory.
-	if err := walkFn(remotePath, info, nil); err != nil {
+func walkdir(client *sftp.Client, info os.FileInfo, p string, walkFn func(string, os.FileInfo, error) error) error {
+	if err := walkFn(p, info, nil); err != nil {
 		return err
 	}
 
-	// If it's not a directory, nothing more to do.
 	if !info.IsDir() {
 		return nil
 	}
-	// List the directory contents.
-	entries, err := client.ReadDir(remotePath)
+
+	entries, err := client.ReadDir(p)
 	if err != nil {
-		return walkFn(remotePath, info, err)
+		return walkFn(p, nil, err)
 	}
-	// Recursively walk each entry.
+
 	for _, entry := range entries {
-		newPath := path.Join(remotePath, entry.Name()) // Use "path" since remote paths are POSIX style.
-		if err := SFTPWalk(client, newPath, walkFn); err != nil {
+		newPath := path.Join(p, entry.Name())
+		if err := walkdir(client, entry, newPath, walkFn); err != nil {
+			if err == SkipDir {
+				continue
+			}
 			return err
 		}
 	}
 	return nil
+}
+
+func SFTPWalk(client *sftp.Client, remotePath string, walkFn func(path string, info os.FileInfo, err error) error) error {
+	info, err := client.Lstat(remotePath)
+	if err != nil {
+		err = walkFn(remotePath, nil, err)
+		goto done
+	}
+
+	err = walkdir(client, info, remotePath, walkFn)
+done:
+	if err == SkipDir || err == SkipAll {
+		err = nil
+	}
+	return err
 }
