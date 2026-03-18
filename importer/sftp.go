@@ -185,7 +185,8 @@ func (imp *Importer) realpathFollow(path string) (resolved string, dev uint64, e
 }
 
 func (p *Importer) Ping(ctx context.Context) error {
-	return nil
+	_, err := p.client.Lstat(p.rootDir)
+	return err
 }
 
 func (p *Importer) Close(ctx context.Context) error {

@@ -82,7 +82,13 @@ func (s *Store) Root() string {
 }
 
 func (s *Store) Ping(ctx context.Context) error {
-	return nil
+	client, err := plakarsftp.Connect(s.endpoint, s.config)
+	if err != nil {
+		return err
+	}
+
+	_, err = client.Lstat(s.endpoint.Path)
+	return err
 }
 
 func (s *Store) List(ctx context.Context, res storage.StorageResource) ([]objects.MAC, error) {

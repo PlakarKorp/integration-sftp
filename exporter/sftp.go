@@ -79,7 +79,8 @@ func (p *Exporter) Type() string          { return "sftp" }
 func (p *Exporter) Flags() location.Flags { return 0 }
 
 func (p *Exporter) Ping(ctx context.Context) error {
-	return nil
+	_, err := p.client.Lstat(p.endpoint.Path)
+	return err
 }
 
 func (p *Exporter) Close(ctx context.Context) error {
