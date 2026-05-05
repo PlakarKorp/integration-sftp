@@ -41,6 +41,7 @@ type Importer struct {
 	opts *connectors.Options
 
 	client   *sftp.Client
+	pool     *plakarsftp.ClientPool
 	endpoint *url.URL
 
 	rootDir   string
@@ -48,6 +49,7 @@ type Importer struct {
 	excludes  *exclude.RuleSet
 	nocrossfs bool
 	devno     uint64
+	poolSize  int
 }
 
 func NewImporter(appCtx context.Context, opts *connectors.Options, name string, config map[string]string) (importer.Importer, error) {
@@ -73,17 +75,33 @@ func NewImporter(appCtx context.Context, opts *connectors.Options, name string, 
 		return nil, err
 	}
 
+	poolSize, err := clientPoolSize(opts, config)
+	if err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+
+	pool, err := plakarsftp.NewClientPool(parsed, config, poolSize)
+	if err != nil {
+		_ = client.Close()
+		return nil, err
+	}
+
 	imp := &Importer{
 		opts:      opts,
 		endpoint:  parsed,
 		client:    client,
+		pool:      pool,
 		nocrossfs: nocrossfs,
 		rootDir:   rootDir,
 		excludes:  excludes,
+		poolSize:  poolSize,
 	}
 
 	realpath, devno, err := imp.realpathFollow(parsed.Path)
 	if err != nil {
+		pool.Close()
+		_ = client.Close()
 		return nil, err
 	}
 	imp.realpath = realpath
@@ -110,15 +128,19 @@ func (imp *Importer) Flags() location.Flags {
 
 func (imp *Importer) Import(ctx context.Context, records chan<- *connectors.Record, results <-chan *connectors.Result) error {
 	defer close(records)
-	return imp.walkDir_walker(ctx, records, imp.opts.MaxConcurrency)
+	return imp.walkDir_walker(ctx, records, imp.poolSize)
 }
 
 func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connectors.Record, numWorkers int) error {
+	if numWorkers <= 0 {
+		numWorkers = plakarsftp.DefaultPoolSize
+	}
+
 	jobs := make(chan file, numWorkers*4) // Buffered channel to feed paths to workers
 	var wg sync.WaitGroup
 	for range numWorkers {
 		wg.Add(1)
-		go imp.walkDir_worker(jobs, records, &wg)
+		go imp.walkDir_worker(ctx, jobs, records, &wg)
 	}
 
 	// Add prefix directories first
@@ -129,7 +151,7 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 
 	err := SFTPWalk(imp.client, imp.rootDir, func(path string, info os.FileInfo, err error) error {
 		if ctx.Err() != nil {
-			return err
+			return ctx.Err()
 		}
 
 		if err != nil {
@@ -150,8 +172,12 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 			}
 		}
 
-		jobs <- file{path: path, info: info}
-		return nil
+		select {
+		case jobs <- file{path: path, info: info}:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	})
 
 	close(jobs)
@@ -190,5 +216,27 @@ func (p *Importer) Ping(ctx context.Context) error {
 }
 
 func (p *Importer) Close(ctx context.Context) error {
+	if p.pool != nil {
+		p.pool.Close()
+	}
+	if p.client != nil {
+		return p.client.Close()
+	}
 	return nil
+}
+
+func clientPoolSize(opts *connectors.Options, config map[string]string) (int, error) {
+	if value := config["sftp_concurrency"]; value != "" {
+		size, err := strconv.Atoi(value)
+		if err != nil {
+			return 0, fmt.Errorf("invalid sftp_concurrency: %w", err)
+		}
+		return size, nil
+	}
+
+	if opts != nil && opts.MaxConcurrency > 0 {
+		return opts.MaxConcurrency, nil
+	}
+
+	return plakarsftp.DefaultPoolSize, nil
 }
