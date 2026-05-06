@@ -129,7 +129,7 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 
 	err := SFTPWalk(imp.client, imp.rootDir, func(path string, info os.FileInfo, err error) error {
 		if ctx.Err() != nil {
-			return err
+			return ctx.Err()
 		}
 
 		if err != nil {
@@ -150,8 +150,12 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 			}
 		}
 
-		jobs <- file{path: path, info: info}
-		return nil
+		select {
+		case jobs <- file{path: path, info: info}:
+			return nil
+		case <-ctx.Done():
+			return ctx.Err()
+		}
 	})
 
 	close(jobs)
