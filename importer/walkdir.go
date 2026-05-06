@@ -17,6 +17,7 @@
 package importer
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -95,7 +96,7 @@ func (imp *Importer) walkDir_addPrefixDirectories(root string, records chan<- *c
 	}
 }
 
-func walkdir(client *sftp.Client, info os.FileInfo, p string, walkFn func(string, os.FileInfo, error) error) error {
+func walkdir(ctx context.Context, client *sftp.Client, info os.FileInfo, p string, walkFn func(string, os.FileInfo, error) error) error {
 	if err := walkFn(p, info, nil); err != nil {
 		return err
 	}
@@ -104,14 +105,14 @@ func walkdir(client *sftp.Client, info os.FileInfo, p string, walkFn func(string
 		return nil
 	}
 
-	entries, err := client.ReadDir(p)
+	entries, err := client.ReadDirContext(ctx, p)
 	if err != nil {
 		return walkFn(p, nil, err)
 	}
 
 	for _, entry := range entries {
 		newPath := path.Join(p, entry.Name())
-		if err := walkdir(client, entry, newPath, walkFn); err != nil {
+		if err := walkdir(ctx, client, entry, newPath, walkFn); err != nil {
 			if err == SkipDir {
 				continue
 			}
@@ -121,14 +122,14 @@ func walkdir(client *sftp.Client, info os.FileInfo, p string, walkFn func(string
 	return nil
 }
 
-func SFTPWalk(client *sftp.Client, remotePath string, walkFn func(path string, info os.FileInfo, err error) error) error {
+func SFTPWalk(ctx context.Context, client *sftp.Client, remotePath string, walkFn func(path string, info os.FileInfo, err error) error) error {
 	info, err := client.Lstat(remotePath)
 	if err != nil {
 		err = walkFn(remotePath, nil, err)
 		goto done
 	}
 
-	err = walkdir(client, info, remotePath, walkFn)
+	err = walkdir(ctx, client, info, remotePath, walkFn)
 done:
 	if err == SkipDir || err == SkipAll {
 		err = nil
