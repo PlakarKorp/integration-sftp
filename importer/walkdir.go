@@ -97,6 +97,10 @@ func (imp *Importer) walkDir_addPrefixDirectories(root string, records chan<- *c
 }
 
 func walkdir(ctx context.Context, client *sftp.Client, info os.FileInfo, p string, walkFn func(string, os.FileInfo, error) error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	if err := walkFn(p, info, nil); err != nil {
 		return err
 	}

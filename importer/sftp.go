@@ -147,12 +147,8 @@ func (imp *Importer) walkDir_walker(ctx context.Context, records chan<- *connect
 			}
 		}
 
-		select {
-		case jobs <- file{path: path, info: info}:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
-		}
+		jobs <- file{path: path, info: info}
+		return nil
 	})
 
 	close(jobs)
